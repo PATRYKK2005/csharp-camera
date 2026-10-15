@@ -1,0 +1,10 @@
+# Visual Studio
+.vs/
+*.user
+
+# Build files
+**/bin/
+**/obj/
+
+# Saved photos and videos
+**/zapisane_pliki/
