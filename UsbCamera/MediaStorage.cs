@@ -1,92 +1,92 @@
 using OpenCvSharp;
 
-namespace UsbCameraMotionDetection;
+namespace UsbCamera;
 
 class MediaStorage : IDisposable
 {
-    // Nagrywarka filmu (null = brak nagrywania)
-    private VideoWriter? writer = null;
+    // Keep existing output names so previously saved media stays in one place.
+    private const string OutputDirectory = "zapisane_pliki";
+    private VideoWriter? writer;
+    private OpenCvSharp.Size recordingSize;
 
-    // Sprawdzenie czy trwa nagrywanie
     public bool IsRecording
     {
         get { return writer != null; }
     }
 
-    public MediaStorage()
-    {
-        // Utworzenie folderu na zdjecia i filmy
-        Directory.CreateDirectory("zapisane_pliki");
-    }
-
-    // 1. ZAPIS ZDJECIA
     public string SavePhoto(Mat frame)
     {
-        // Nazwa pliku z data i godzina
-        string czas = DateTime.Now.ToString("yyyyMMdd_HHmmss_fff");
-        string sciezka = "zapisane_pliki/zdjecie_" + czas + ".jpg";
+        if (frame.Empty())
+            throw new ArgumentException("The photo frame is empty.", nameof(frame));
 
-        // Zapis zdjecia na dysk
-        bool udalo = Cv2.ImWrite(sciezka, frame);
+        // Create the directory here so file errors reach the UI's error handler.
+        Directory.CreateDirectory(OutputDirectory);
+        string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss_fff");
+        string path = Path.Combine(OutputDirectory, "zdjecie_" + timestamp + ".jpg");
 
-        if (!udalo)
+        bool saved = Cv2.ImWrite(path, frame);
+
+        if (!saved)
         {
-            throw new Exception("Nie udalo sie zapisac zdjecia: " + sciezka);
+            throw new IOException("Failed to save photo: " + path);
         }
 
-        return sciezka;
+        return path;
     }
 
-    // 2. START NAGRYWANIA
-    public string StartRecording(Size frameSize, double fps)
+    public string StartRecording(OpenCvSharp.Size frameSize, double fps)
     {
-        // Zakonczenie poprzedniego nagrania, jesli jeszcze trwa
-        if (writer != null)
+        if (frameSize.Width <= 0 || frameSize.Height <= 0 ||
+            frameSize.Width % 2 != 0 || frameSize.Height % 2 != 0)
+            throw new ArgumentException("MJPG recording requires positive, even frame dimensions.", nameof(frameSize));
+
+        if (!double.IsFinite(fps) || fps <= 0)
+            throw new ArgumentOutOfRangeException(nameof(fps), "Recording FPS must be positive and finite.");
+
+        StopRecording();
+        Directory.CreateDirectory(OutputDirectory);
+        string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss_fff");
+        string path = Path.Combine(OutputDirectory, "film_" + timestamp + ".avi");
+
+        VideoWriter newWriter = new VideoWriter();
+        try
         {
-            StopRecording();
+            if (!newWriter.Open(path, FourCC.MJPG, fps, frameSize))
+                throw new IOException("Failed to open video file: " + path);
+
+            recordingSize = frameSize;
+            writer = newWriter;
+        }
+        catch
+        {
+            newWriter.Dispose();
+            throw;
         }
 
-        // Nazwa pliku z data i godzina
-        string czas = DateTime.Now.ToString("yyyyMMdd_HHmmss_fff");
-        string sciezka = "zapisane_pliki/film_" + czas + ".avi";
-
-        // Otwarcie pliku AVI z kodekiem MJPG
-        writer = new VideoWriter(sciezka, FourCC.MJPG, fps, frameSize);
-
-        if (!writer.IsOpened())
-        {
-            writer.Dispose();
-            writer = null;
-            throw new Exception("Nie udalo sie otworzyc pliku wideo: " + sciezka);
-        }
-
-        return sciezka;
+        return path;
     }
 
-    // 3. ZAPIS KLATKI DO FILMU
     public void WriteFrame(Mat frame)
     {
         if (writer != null)
         {
+            if (frame.Empty() || frame.Size() != recordingSize || frame.Type() != MatType.CV_8UC3)
+                throw new InvalidOperationException("The video frame must match the recording dimensions and use 8-bit BGR color.");
+
             writer.Write(frame);
         }
     }
 
-    // 4. KONIEC NAGRYWANIA
     public void StopRecording()
     {
-        if (writer != null)
-        {
-            // Zamkniecie pliku AVI
-            writer.Release();
-            writer.Dispose();
-            writer = null;
-        }
+        // Clear the state first; Dispose also finalizes and closes the AVI file.
+        VideoWriter? previousWriter = writer;
+        writer = null;
+        previousWriter?.Dispose();
     }
 
     public void Dispose()
     {
-        // Zakonczenie nagrywania przy zamykaniu programu
         StopRecording();
     }
 }
