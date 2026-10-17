@@ -1,7 +1,6 @@
-﻿using OpenCvSharp;
 using System;
 using System.Collections.Generic;
-using UsbCameraMotionDetection;
+using OpenCvSharp;
 
 Cv2.SetLogLevel(LogLevel.ERROR); //żeby nei było błedów
 
