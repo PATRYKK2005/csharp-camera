@@ -1,25 +1,30 @@
 using OpenCvSharp;
 
-namespace UsbCameraMotionDetection;
+namespace UsbCamera;
 
 static class FrameEffects
 {
     public static Mat Apply(Mat source, double contrast, double brightness, bool flip)
     {
-        // 1. NOWY OBRAZ NA WYNIK
-        Mat wynik = new Mat();
-
-        // 2. ZMIANA KONTRASTU I JASNOSCI
-        // Kazdy piksel: piksel * kontrast + jasnosc
-        source.ConvertTo(wynik, -1, contrast, brightness);
-
-        // 3. ODBICIE LUSTRZANE
-        if (flip)
+        Mat result = new Mat();
+        try
         {
-            // Odbicie w poziomie (lewo <-> prawo)
-            Cv2.Flip(wynik, wynik, FlipMode.Y);
-        }
+            // Each pixel becomes: pixel * contrast + brightness.
+            source.ConvertTo(result, -1, contrast, brightness);
 
-        return wynik;
+            if (flip)
+            {
+                // Mirror horizontally (left to right).
+                Cv2.Flip(result, result, FlipMode.Y);
+            }
+
+            // The caller owns the returned frame.
+            return result;
+        }
+        catch
+        {
+            result.Dispose();
+            throw;
+        }
     }
 }
